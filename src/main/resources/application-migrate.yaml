@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# The migration Job. Not a web application: this profile runs Flyway and exits.
+#
+# Activated as SPRING_PROFILES_ACTIVE=prod,migrate, in that order, so the Job
+# inherits production's hardening and overrides only what differs. Later wins,
+# so `migrate` beats `prod`'s flyway.enabled=false; reversed, the Job would
+# start, migrate nothing and exit 0.
+#
+# It runs the SAME IMAGE as the Deployment, with a different Secret mounted:
+#
+#   Argo sync wave 0   Job         DB_* from kv/wallet-transaction/db-migrator   (DDL)
+#   Argo sync wave 1   Deployment  DB_* from kv/wallet-transaction/db-app        (no DDL)
+# ---------------------------------------------------------------------------
+spring:
+  main:
+    # No servlet container and so no security stack either: backend-common's security
+    # auto-configuration is servlet-only, so the Job needs neither an issuer nor Keycloak
+    # to migrate a schema. With nothing keeping the context alive, main() returns and the
+    # JVM exits 0, or non-zero if Flyway threw: exactly the contract a Job wants.
+    web-application-type: none
+    keep-alive: false
+
+  flyway:
+    # ON, overriding prod. This process exists for this line.
+    enabled: true
+
+  datasource:
+    hikari:
+      # No statement timeout for a migration, which may legitimately take minutes.
+      connection-init-sql: SET statement_timeout = 0
+      maximum-pool-size: 2
+      minimum-idle: 0
+      leak-detection-threshold: 0
+
+# Nothing here calls the ledger or Keycloak, and the Job is given neither address nor
+# secret. So the beans that need them — TransactionController, TransactionService and
+# LedgerReservations — are @Profile("!migrate") and do not exist in this process. Left
+# in, LedgerReservations would refuse to start without LEDGER_URL after Flyway had
+# already run: a migrated schema and a failed Job, wallet-auth-service's 0.10.0 bug.

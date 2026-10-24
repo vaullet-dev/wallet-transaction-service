@@ -1,0 +1,43 @@
+# Overrides for the `test` profile. Kept minimal on purpose: the closer the test
+# configuration is to production configuration, the more the tests are worth.
+spring:
+  docker:
+    compose:
+      # Testcontainers owns the database in tests; Compose would be a second one.
+      enabled: false
+  flyway:
+    # Migrations run in tests too, so a broken migration fails the build rather than the deploy.
+    enabled: true
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  level:
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN
+
+app:
+  environment: test
+
+transaction:
+  currency: EUR
+  # Nothing here resolves (.invalid, RFC 2606), so a test that strays into Keycloak or the
+  # ledger fails loudly instead of passing against nothing. TransactionApiIT points both at
+  # a stand-in of its own (support/Upstreams).
+  keycloak:
+    url: http://keycloak.invalid
+    client-secret: unused
+  ledger:
+    url: http://ledger.invalid
+
+vaullet:
+  api:
+    allowed-origins: ""
+  test:
+    # Pinned to the tag compose.yaml uses, so a behaviour that passes locally and fails in CI
+    # cannot be a version difference.
+    postgres:
+      image: postgres:18-alpine

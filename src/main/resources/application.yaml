@@ -1,0 +1,141 @@
+# ---------------------------------------------------------------------------
+# Base configuration — shared by every environment.
+#
+# The conventions are the ledger's and auth's:
+#   * Every environment-specific or secret value is an ${ENV_VAR} reference.
+#     A default is provided only where the default is safe everywhere.
+#   * Profile-specific overrides live in application-<profile>.yaml.
+#   * Anything the whole platform agrees on is imported, not restated. What is
+#     left in this file is what this service actually decides.
+# ---------------------------------------------------------------------------
+spring:
+  application:
+    name: transaction-service
+
+  config:
+    # @vaullet-dev/backend-common-web ships the platform defaults: virtual threads,
+    # snake_case JSON (ADR-011 §8), problem+json for framework errors, graceful
+    # shutdown, the Actuator exposure list, tracing sampling and the log correlation
+    # pattern. An imported document ranks below this file, so anything set here wins.
+    import: "classpath:vaullet/platform-defaults.yaml"
+
+  datasource:
+    # ONE credential. Which identity it is depends on the workload: the Deployment
+    # mounts transaction_app, the migration Job mounts transaction_migrator, and the
+    # property names are identical in both. See the `migrate` profile.
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/transactions}
+    username: ${DB_USERNAME:transactions}
+    password: ${DB_PASSWORD:transactions}
+    hikari:
+      # A statement that cannot finish in two seconds is a bug or a lock, and either way the
+      # caller is better served by an error than by a thread parked behind it.
+      connection-init-sql: SET statement_timeout = '2s'
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      minimum-idle: 2
+      # Plain milliseconds: Hikari binds these straight onto HikariConfig.
+      connection-timeout: 3000
+      leak-detection-threshold: 30000
+
+  flyway:
+    # ON here, where the connecting role owns the schema; OFF in prod, where the
+    # migration Job runs Flyway as transaction_migrator (application-prod.yaml).
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # No default on purpose: an unset issuer means no JwtDecoder, and the context
+          # refuses to start rather than starting without token validation.
+          issuer-uri: ${OAUTH2_ISSUER_URI:}
+
+server:
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  # /actuator/info answers "which build is running": the build and git contributors are on once
+  # the POM has written build-info.properties and git.properties into the jar.
+  info:
+    git:
+      mode: full
+  observations:
+    key-values:
+      application: transaction-service
+
+logging:
+  level:
+    root: INFO
+    dev.vaullet.transaction: ${LOG_LEVEL:INFO}
+
+# ---------------------------------------------------------------------------
+# This service's own settings (TransactionProperties). None of the four that
+# matter has a default: without them the service refuses to start, naming the
+# one it is missing, rather than starting unable to hold a cent.
+# ---------------------------------------------------------------------------
+transaction:
+  # The deployment's currency, ISO 4217: the ledger's LEDGER_CURRENCY, and the two
+  # must agree (ADR-004). A request in any other is CURRENCY_MISMATCH, here.
+  currency: ${TRANSACTION_CURRENCY:}
+  # Decimal places of the minor unit. Empty means ISO 4217's: 2 for EUR, 0 for JPY.
+  # Set it only where the ledger's LEDGER_MINOR_UNITS is set, and to the same.
+  minor-units: ${TRANSACTION_MINOR_UNITS:}
+  keycloak:
+    # The in-cluster Service, relative path included, e.g.
+    # http://keycloak-keycloakx-http.keycloak.svc/auth. This service's token for the
+    # ledger comes from its token endpoint.
+    url: ${KEYCLOAK_URL:}
+    realm: ${KEYCLOAK_REALM:vaullet}
+    # Confidential, client credentials only, offering ledger:write as an optional scope
+    # (gitops realm/31-wallet-transaction-service.yaml).
+    client-id: ${KEYCLOAK_CLIENT_ID:wallet-transaction-service}
+    # From OpenBao via External Secrets, like the database password.
+    client-secret: ${KEYCLOAK_CLIENT_SECRET:}
+    timeout: 5s
+  ledger:
+    # Its in-cluster Service, e.g. http://ledger-service.wallet-ledger.svc, and the only
+    # way in: the ledger has no public route (ADR-008).
+    url: ${LEDGER_URL:}
+    # With Keycloak's, this bounds the longest call to the ledger, and so a debit's attempt
+    # lease: Keycloak's timeout four times (a wait for another request's token, then this
+    # one's fetch, each a connect and a read), this one twice, and 10s, so 40s as set here.
+    # A retry finds REQUEST_IN_PROGRESS for at most that long after a replica died mid-call.
+    timeout: 5s
+
+# ---------------------------------------------------------------------------
+# Platform library settings (@vaullet-dev/backend-common). The prefix is
+# `vaullet`, so a reader can tell the shared library's keys from this
+# service's own.
+# ---------------------------------------------------------------------------
+app:
+  # Free-form environment label, interpolated into the OpenAPI description below.
+  environment: ${APP_ENVIRONMENT:unknown}
+
+vaullet:
+  api:
+    # Empty by default; a deployment that serves a browser app opens it explicitly.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    cors-path-pattern: /v1/**
+    allowed-methods: GET,POST
+
+  security:
+    # What the @PreAuthorize rules ask an operator's backend for. Under the `local`
+    # profile they are handed to the anonymous principal, so a developer exercises the
+    # real rules, as an operator: an end user's rules need an end user's token.
+    local:
+      anonymous-authorities: SCOPE_transaction:read,SCOPE_transaction:write,ROLE_OPERATOR
+
+  openapi:
+    title: Vaullet Transactions API
+    # The major version in the path (ADR-011).
+    version: "1"
+    description: |
+      Transactions, the orchestrator in front of the ledger (ADR-005, ADR-012).
+
+      Money is a decimal string with an explicit currency, never a JSON number (ADR-011).
+      Timestamps are RFC 3339 UTC. Errors are RFC 9457 problem+json carrying a stable `code`.
+
+      Environment: ${app.environment}
