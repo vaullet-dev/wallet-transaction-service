@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# Deployed environments. Nothing here has a hard-coded value that differs
+# between staging and production — those come from the environment, and every
+# credential comes from OpenBao through External Secrets as a mounted
+# Kubernetes Secret (k8s/).
+#
+# The pod spec sets SPRING_PROFILES_ACTIVE=prod. The migration Job runs
+# prod,migrate, so it inherits everything here that application-migrate.yaml
+# does not override.
+# ---------------------------------------------------------------------------
+spring:
+  docker:
+    compose:
+      enabled: false
+
+  flyway:
+    # OFF. This is the decision, and it is one line.
+    #
+    # Migrations run as a separate Kubernetes Job from the `migrate` profile
+    # (k8s/migrate-job.yaml), holding transaction_migrator. This process holds
+    # transaction_app, which has no DDL rights and never sees the migrator
+    # credential, so "the service cannot alter its own tables" is a property of
+    # what is mounted rather than a promise in a document. Left on, Flyway would
+    # not even get as far as validating: transaction_app has no grant on
+    # flyway_schema_history, so the start would fail.
+    #
+    # The cost, stated so nobody rediscovers it during an incident: a rollback
+    # puts the previous image in front of a forward schema, which is survivable
+    # only while migrations stay backward-compatible. Expand, then contract, and
+    # never a destructive change in the same release as the code that stops
+    # needing the column.
+    enabled: false
+
+logging:
+  structured:
+    # One JSON object per line, in Elastic Common Schema. Boot ships this natively, so
+    # log shipping needs neither logstash-logback-encoder nor a hand-written
+    # logback-spring.xml. Fields are stable and greppable, and the trace id is a
+    # first-class key rather than something inside a message string.
+    format:
+      console: ecs
+  level:
+    root: INFO
+    dev.vaullet.transaction: INFO
+
+server:
+  tomcat:
+    # Sized against the database pool: threads that cannot get a connection are just a
+    # longer queue. With virtual threads enabled this is the accept limit.
+    threads:
+      max: 200
+    accesslog:
+      enabled: false
+
+management:
+  endpoint:
+    health:
+      show-details: when-authorized
