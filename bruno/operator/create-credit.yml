@@ -1,0 +1,52 @@
+info:
+  name: Create CREDIT
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{base_url}}/v1/transactions"
+  headers:
+    - name: Idempotency-Key
+      value: "{{$randomUUID}}"
+  body:
+    type: json
+    data: |-
+      {
+        "account_id": "{{account_id}}",
+        "type": "CREDIT",
+        "amount": "50",
+        "currency": "EUR",
+        "reference": "win-8891"
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        if (bru.getEnvName() === "prod") {
+          bru.runner.skipRequest();
+        }
+    - type: after-response
+      code: |-
+        if (res.status === 201) {
+          bru.setVar("transaction_id", res.body.transaction_id);
+        }
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: |-
+  50 into the environment's `account_id`: recorded `AUTHORIZED` at once, for any account, without
+  asking the ledger. A credit holds nothing and is posted at capture, which is not built yet, so today
+  it moves no money. `amount` comes back in the currency's minor units, `"50.00"`. Keeps
+  `transaction_id`.

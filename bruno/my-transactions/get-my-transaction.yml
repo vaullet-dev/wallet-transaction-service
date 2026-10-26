@@ -1,0 +1,33 @@
+info:
+  name: Get my transaction
+  type: http
+  seq: 3
+
+http:
+  method: GET
+  url: "{{base_url}}/v1/transactions/{{my_transaction_id}}"
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        if (bru.getEnvName() === "local") {
+          bru.runner.skipRequest();
+        }
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: |-
+  The debit read back: status, amount, hold and allocations, or for a `DECLINED` one its
+  `decline_code`. An end user reads any transaction on their own account, whoever recorded it; one on
+  another account answers `404`, exactly as an id that does not exist.

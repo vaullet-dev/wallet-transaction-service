@@ -1,0 +1,63 @@
+info:
+  name: Repeat my debit
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{base_url}}/v1/transactions"
+  headers:
+    - name: Idempotency-Key
+      value: "{{my_debit_key}}"
+  body:
+    type: json
+    data: |-
+      {
+        "type": "DEBIT",
+        "amount": "5.00",
+        "currency": "EUR",
+        "reference": "order-1001",
+        "metadata": {
+          "channel": "bruno"
+        }
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        if (bru.getEnvName() === "local") {
+          bru.runner.skipRequest();
+        }
+    - type: after-response
+      code: |-
+        if (!bru.getVar("my_transaction_id") && res.body && res.body.transaction_id) {
+          bru.setVar("my_transaction_id", res.body.transaction_id);
+        }
+    - type: tests
+      code: |-
+        test("answers with the transaction the key recorded", function () {
+          expect(res.body.transaction_id).to.equal(bru.getVar("my_transaction_id"));
+        });
+  assertions:
+    - expression: res.status
+      operator: in
+      value: 201, 404, 409
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: |-
+  The same request with the same `Idempotency-Key` as *Create my debit*: the retry. It answers with
+  the transaction the key recorded, as it stands — `201` with the same `transaction_id`, or the same
+  refusal with it — and the ledger is not asked again, unless the debit is still `PENDING` after a
+  `503`, which this takes up.
+
+  Change anything in the body and it is `409 IDEMPOTENCY_KEY_REUSED`; `"5"` for `"5.00"`, or naming
+  your own `account_id`, is still the same request. Sent while the first is still waiting for the
+  ledger, `409 REQUEST_IN_PROGRESS`.

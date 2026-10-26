@@ -1,0 +1,61 @@
+info:
+  name: Create DEBIT
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{base_url}}/v1/transactions"
+  headers:
+    - name: Idempotency-Key
+      value: "{{$randomUUID}}"
+  body:
+    type: json
+    data: |-
+      {
+        "account_id": "{{account_id}}",
+        "type": "DEBIT",
+        "amount": "20.00",
+        "currency": "EUR",
+        "expires_in_seconds": 259200,
+        "reference": "bet-8891",
+        "metadata": {
+          "market": "match-winner"
+        }
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        if (bru.getEnvName() === "prod") {
+          bru.runner.skipRequest();
+        }
+    - type: after-response
+      code: |-
+        if (res.body && res.body.transaction_id) {
+          bru.setVar("transaction_id", res.body.transaction_id);
+        }
+  assertions:
+    - expression: res.status
+      operator: in
+      value: 201, 404, 409, 503
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: |-
+  A hold of 20.00 on the environment's `account_id` for three days (`expires_in_seconds` 259200), with
+  the caller's own `reference` and `metadata`.
+
+  What it answers is the ledger's to say: `201 AUTHORIZED`, with the hold, its expiry and its buckets;
+  `404 RESOURCE_NOT_FOUND` for an account the ledger does not know, `409 INSUFFICIENT_FUNDS` for one
+  without the money, both recorded `DECLINED` and named in `transaction_id`. With no ledger or Keycloak
+  running, as on a laptop with nothing else up, `503 UPSTREAM_UNAVAILABLE`: recorded `PENDING`, and
+  named nowhere. A `500` means Keycloak answered but refused this service's client (README, "Running a
+  debit locally"). Keeps `transaction_id` when the answer names one.

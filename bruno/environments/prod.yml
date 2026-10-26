@@ -1,0 +1,14 @@
+name: prod
+variables:
+  - name: base_url
+    value: https://vaullet.dev/api/transactions
+    description: The gateway route to transaction-service, once it is deployed; the prefix is stripped before the service.
+  - name: oauth2_authorization_url
+    value: https://vaullet.dev/auth/realms/vaullet/protocol/openid-connect/auth
+    description: Keycloak realm vaullet, client bruno.
+  - name: oauth2_token_url
+    value: https://vaullet.dev/auth/realms/vaullet/protocol/openid-connect/token
+    description: Keycloak realm vaullet.
+  - name: account_id
+    value: ""
+    description: Unused until an operator client exists; the Operator folder is skipped here until then.

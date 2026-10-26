@@ -1,0 +1,22 @@
+info:
+  name: Operator
+  type: folder
+  seq: 2
+
+request:
+  auth: inherit
+
+docs:
+  content: |-
+    An operator's backend: a debit or a credit on any account it names, and any transaction read
+    back. Creating needs `transaction:write`, reading `transaction:read`, and no role: no person is
+    behind an operator's token, so the scope is the permission.
+
+    **Local only, for now.** No client of the realm can get `transaction:write` yet, so these work
+    only against a local run, where the `local` profile hands the anonymous caller the operator's
+    scopes. They are skipped under **prod** until an operator client exists; then this folder signs in
+    with that client's credentials instead of the collection's sign-in, which is a person's.
+
+    Each create sends `{{$randomUUID}}` as its `Idempotency-Key`, so every send is a new transaction,
+    and keeps `transaction_id` when its answer names one. Both name the environment's `account_id`.
+  type: text/markdown

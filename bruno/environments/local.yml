@@ -1,0 +1,14 @@
+name: local
+variables:
+  - name: base_url
+    value: http://localhost:8080
+    description: ./mvnw spring-boot:run, with Compose's PostgreSQL.
+  - name: oauth2_authorization_url
+    value: ""
+    description: "Empty on purpose: the local profile needs no token, and an empty URL keeps Bruno from asking for one."
+  - name: oauth2_token_url
+    value: ""
+    description: Empty on purpose, like oauth2_authorization_url.
+  - name: account_id
+    value: 7e57a11c-0000-4000-8000-000000000001
+    description: "The account the Operator folder names. Any UUID will do for a CREDIT; a DEBIT is the ledger's to answer, and it knows only an account with a wallet. This is the account the ledger collection's local environment opens wallets for."

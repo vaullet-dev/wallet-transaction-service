@@ -1,0 +1,56 @@
+# vaullet.dev/api/transactions -> transaction-service. The backend is routed by PATH on
+# the one public hostname: each service owns a prefix under /api, and the prefix is
+# stripped before the request reaches it, so the service itself still serves
+# /v1/transactions, /actuator/health and /swagger-ui.html exactly as it does locally.
+#
+#   https://vaullet.dev/api/transactions/actuator/health   ->  transaction-service /actuator/health
+#   https://vaullet.dev/api/transactions/v1/transactions   ->  transaction-service /v1/transactions
+#
+# The word twice is not a typo: /api/transactions is the service's prefix and
+# /v1/transactions its resource, as in /api/auth/v1/accounts.
+#
+# Public, unlike the ledger, which has no route at all (ADR-008): this service is
+# how money is asked to move. An end user's app calls it with the user's own token
+# and reaches only that user's account (transaction:self); an operator's backend
+# calls it with its client's (transaction:read, transaction:write). The ledger is
+# then asked by this service, with its own token, never theirs.
+#
+# Precedence: web's route on vaullet.dev has no match, i.e. PathPrefix "/". Gateway
+# API ranks the longer prefix first, so /api/transactions lands here and everything
+# else still reaches the site. PathPrefix matches whole path elements:
+# /api/transactionsx does NOT match.
+#
+# Plain HTTP needs nothing here: web-https-redirect already sends every path on
+# vaullet.dev:80 to https.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: transaction-service
+spec:
+  parentRefs:
+    - { name: vaullet, namespace: traefik, kind: Gateway, sectionName: websecure }
+  hostnames: [ vaullet.dev ]
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /api/transactions }
+      filters:
+        # /api/transactions/actuator/health -> /actuator/health
+        - type: URLRewrite
+          urlRewrite:
+            path: { type: ReplacePrefixMatch, replacePrefixMatch: / }
+        # Tells the service the prefix it was mounted under. The platform defaults set
+        # server.forward-headers-strategy=framework, so Spring applies it to every URL
+        # it generates. Without it, Swagger UI at /api/transactions/swagger-ui.html
+        # fetches /v3/api-docs from the site root and gets web's 404, and the Location
+        # of every 201 from POST /v1/transactions names /v1/transactions/{id} at the
+        # site root, which is web's, not this service's. It also makes Swagger UI's
+        # sign-in send Keycloak back to /api/transactions/swagger-ui/oauth2-redirect.html,
+        # which the shared swagger-ui client has to list among its redirectUris (gitops
+        # realm/26-vaullet-swagger-ui-client.yaml). SET, not add: a client-supplied
+        # X-Forwarded-Prefix is overwritten rather than trusted.
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - { name: X-Forwarded-Prefix, value: /api/transactions }
+      backendRefs:
+        - { name: transaction-service, port: 80 }

@@ -1,0 +1,62 @@
+info:
+  name: Create my debit
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: "{{base_url}}/v1/transactions"
+  headers:
+    - name: Idempotency-Key
+      value: "{{my_debit_key}}"
+  body:
+    type: json
+    data: |-
+      {
+        "type": "DEBIT",
+        "amount": "5.00",
+        "currency": "EUR",
+        "reference": "order-1001",
+        "metadata": {
+          "channel": "bruno"
+        }
+      }
+  auth: inherit
+
+runtime:
+  scripts:
+    - type: before-request
+      code: |-
+        if (bru.getEnvName() === "local") {
+          bru.runner.skipRequest();
+        }
+        bru.setVar("my_debit_key", bru.interpolate("{{$randomUUID}}"));
+        bru.setVar("my_transaction_id", "");
+    - type: after-response
+      code: |-
+        if (res.body && res.body.transaction_id) {
+          bru.setVar("my_transaction_id", res.body.transaction_id);
+        }
+  assertions:
+    - expression: res.status
+      operator: in
+      value: 201, 404, 409
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: |-
+  Debits the signed-in user's own account, the one their token names, without naming it: a hold of
+  5.00 for the ledger's default 300 seconds. A new `Idempotency-Key` every time it is sent, kept as
+  `my_debit_key`, so every send is a new transaction; *Repeat my debit* is the retry.
+
+  `201 AUTHORIZED`, with the hold, its expiry and the buckets funding it, when the account has the
+  money. Nothing puts money into an account through the API yet, so the usual answer is
+  `409 INSUFFICIENT_FUNDS`: recorded `DECLINED`, and named in the body's `transaction_id`. `404` is an
+  account the ledger does not know. A `503` means the ledger did not answer: the debit stays
+  `PENDING`, its body names it in `transaction_id`, and *Repeat my debit* takes it up. Keeps
+  `my_transaction_id`.
