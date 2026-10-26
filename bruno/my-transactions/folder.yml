@@ -1,0 +1,27 @@
+info:
+  name: My transactions
+  type: folder
+  seq: 1
+
+request:
+  auth: inherit
+
+docs:
+  content: |-
+    The signed-in end user's own debits: one on their own account without naming it, the same
+    request again with the same `Idempotency-Key`, and the transaction read back. An end user may
+    debit, never credit, and only the account their token names. Somebody else's transaction is
+    `404`, exactly as one that does not exist.
+
+    Sign in as an end user whose token carries `account_id`, the role `END_USER` and the scope
+    `transaction:self`: somebody whose account wallet-auth-service has written onto their user (that
+    collection's *My account*). A token from before that names no account, and to this service its
+    holder is then an operator without `transaction:write`: `403`. *Clear Cache* in the collection's
+    Auth tab, and sign in again.
+
+    Not possible yet: the `bruno` client does not carry `transaction:self`, which the realm does not
+    have (README, "Still open").
+
+    Skipped under **local**: the `local` profile's anonymous principal is an operator and names no
+    account, so a debit without `account_id` is `400 VALIDATION_FAILED` there.
+  type: text/markdown

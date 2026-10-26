@@ -1,0 +1,50 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: wallet-transaction
+resources:
+  - k8s/serviceaccount.yaml
+  - k8s/externalsecret-db-migrator.yaml
+  - k8s/externalsecret-db-app.yaml
+  - k8s/externalsecret-keycloak-client.yaml
+  - k8s/migrate-job.yaml
+  - k8s/deployment.yaml
+  - k8s/service.yaml
+  - k8s/httproute.yaml
+
+# The deployment's currency, ISO 4217 (ADR-004). It MUST equal the ledger's: LEDGER_CURRENCY in
+# wallet-ledger-service's kustomization.yaml, EUR there too. Nothing checks the two against each
+# other. This service answers CURRENCY_MISMATCH to a request in any other currency than this one,
+# but the ledger's POST /v1/reservations carries an account and an amount and no currency at all,
+# so with the two apart a debit accepted here in one currency is held there in the other, and
+# neither side refuses it.
+#
+# It changes only together with the ledger's, and the ledger's is a migration, not an edit (its
+# kustomization.yaml says why). Every transaction already recorded keeps the currency it was
+# recorded in.
+#
+# Generated rather than a plain ConfigMap under k8s/, for the name: kustomize appends a hash of the
+# content, so a changed value changes the Deployment's pod spec and the pods roll onto it. A plain
+# ConfigMap would change under pods that read it only at start, and the change would wait for the
+# next restart, whenever that happened to be.
+#
+# Only the Deployment reads it. Unlike the ledger's, this service's migration Job records no
+# currency, and k8s/migrate-job.yaml says why it is not given one.
+configMapGenerator:
+  - name: transaction-config
+    literals:
+      - TRANSACTION_CURRENCY=EUR
+
+# This one line IS the deployment: Argo CD reconciles the cluster to whatever tag is
+# committed here. It is bumped BY HAND for now -- the release job builds and pushes an
+# image and tags the commit, and deploys nothing. Bump it with a no-release commit type
+# (chore(deploy): ...), or the bump itself cuts a release of an image identical to the
+# one it points at.
+#
+# 0.1.0 is the first release, cut by the feat: commit of #1: with no tag yet,
+# scripts/version.sh names the first release 0.1.0 whatever the log says. If Argo syncs
+# before the release job has pushed it, the Job's pod waits in ImagePullBackOff until it
+# has. It is also the floor: no image precedes it, because the scaffold before #1 was a
+# chore: commit, which releases nothing.
+images:
+  - name: ghcr.io/vaullet-dev/transaction-service
+    newTag: "0.1.0"

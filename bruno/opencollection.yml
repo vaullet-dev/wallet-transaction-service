@@ -1,0 +1,78 @@
+opencollection: 1.0.0
+
+info:
+  name: wallet-transaction-service
+  version: "1"
+config:
+  proxy:
+    inherit: true
+    config:
+      protocol: http
+      hostname: ""
+      port: ""
+      auth:
+        username: ""
+        password: ""
+      bypassProxy: ""
+
+request:
+  auth:
+    type: oauth2
+    flow: authorization_code
+    authorizationUrl: "{{oauth2_authorization_url}}"
+    accessTokenUrl: "{{oauth2_token_url}}"
+    callbackUrl: https://oauth.usebruno.com/callback
+    credentials:
+      clientId: bruno
+      placement: body
+    scope: openid
+    pkce: {}
+    tokenConfig:
+      id: credentials
+      placement:
+        header: Bearer
+      source: access_token
+    settings:
+      autoFetchToken: true
+      autoRefreshToken: true
+
+docs:
+  content: |
+    # wallet-transaction-service
+
+    `POST /v1/transactions` and `GET /v1/transactions/{id}`, as the two kinds of caller the service
+    tells apart by their token: an end user, whose token names their account, and an operator's
+    backend, whose token names none. The OpenAPI document at `/swagger-ui.html` is the reference;
+    this is for calling them.
+
+    ## Environments
+
+    - **local** — `./mvnw spring-boot:run`. The `local` profile runs every request as the anonymous
+      principal with the operator's scopes, `transaction:read` and `transaction:write`, so there is no
+      sign-in and Bruno sends no token (the empty OAuth2 URLs are what switch it off). That caller
+      names no account, so *My transactions* is skipped and *Operator* is what runs.
+    - **prod** — https://vaullet.dev/api/transactions, once deployed. The first request opens
+      Keycloak's sign-in page through the `bruno` client (authorization code with PKCE). Sign in as an
+      end user whose token carries `account_id`. *Operator* is skipped: no client of the realm can get
+      `transaction:write` yet.
+
+    ## Idempotency-Key
+
+    Every POST sends one. *Create my debit* makes a new one each time it is sent and keeps it as
+    `my_debit_key`, and *Repeat my debit* sends it again: that is the retry, and it answers with the
+    same transaction. The operator's creates send `{{$randomUUID}}`, so every send of theirs is a new
+    transaction.
+
+    ## Flow
+
+    Run a folder top to bottom. *Create my debit* keeps `my_transaction_id` for the requests under it,
+    and each operator create keeps `transaction_id` when its answer names one. Every request asserts
+    its status, so `bru run --env local` checks a local run end to end; the CLI cannot do the browser
+    sign-in, so it is for local only.
+  type: text/markdown
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
