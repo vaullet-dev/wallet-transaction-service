@@ -22,8 +22,10 @@ import org.springframework.web.client.RestClientException;
 /**
  * An access token of this service's own client, {@code wallet-transaction-service}, obtained with the
  * client credentials grant and reused until shortly before it expires. It asks for
- * {@code ledger:write} on top of the client's defaults, the scope the ledger checks on
- * {@code POST /v1/reservations}.
+ * {@code ledger:reserve}, the scope the ledger checks on {@code POST /v1/reservations}. The client
+ * has it as a default scope too, so the token would carry it unasked; asking by name means a client
+ * without it fails here, with Keycloak's {@code invalid_scope} naming it, rather than at the ledger
+ * as a bare {@code 403}.
  *
  * <p>wallet-auth-service's class of the same name, but for this paragraph and one change: a request
  * waits for another's fetch for a bounded time ({@link #acquire()}), because here the time a token
@@ -184,7 +186,7 @@ public final class KeycloakTokens {
 
     /**
      * OAuth's {@code error} and {@code error_description}, such as {@code invalid_scope: Invalid
-     * scopes: ledger:write}. Never the whole body, and never anything from the request.
+     * scopes: ledger:reserve}. Never the whole body, and never anything from the request.
      */
     private static String reason(ClientHttpResponse reply) {
         try (InputStream in = reply.getBody()) {

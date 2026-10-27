@@ -182,7 +182,7 @@ class LedgerReservationsTest {
             assertThatThrownBy(() -> problem(status, "ACCESS_DENIED"))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("client '" + CLIENT + "'")
-                    .hasMessageContaining("ledger:write");
+                    .hasMessageContaining("ledger:reserve");
         }
 
         @Test

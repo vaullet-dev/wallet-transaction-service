@@ -200,7 +200,7 @@ class TransactionApiIT {
             assertThat(upstream.lastTokenRequest()).hasValueSatisfying(token -> assertThat(token.body())
                     .contains("grant_type=client_credentials")
                     .contains("client_id=wallet-transaction-service")
-                    .contains("scope=ledger%3Awrite"));
+                    .contains("scope=ledger%3Areserve"));
         }
 
         @Test
@@ -370,6 +370,25 @@ class TransactionApiIT {
                     .andExpect(status().isInternalServerError())
                     .andExpect(jsonPath("$.code", is("INTERNAL_ERROR")));
             assertThat(jdbc.queryForObject("SELECT status FROM transactions", String.class)).isEqualTo("PENDING");
+        }
+
+        @Test
+        @DisplayName("the ledger refuses the token: 500 and PENDING, and the retry holds it with a new token")
+        void token_refused_then_renewed() throws Exception {
+            // As when the client's scopes change under a running service: the token in hand was minted
+            // before the change, and only a new one carries what the client offers now.
+            upstream.ledger(request -> Response.problem(403, "ACCESS_DENIED"));
+            create(operator(), "bet-10", debit(account, "20.00"))
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(jsonPath("$.code", is("INTERNAL_ERROR")));
+            assertThat(jdbc.queryForObject("SELECT status FROM transactions", String.class)).isEqualTo("PENDING");
+            String refused = upstream.ledgerRequests().getLast().header("Authorization");
+
+            upstream.ledger(TransactionApiIT::holds);
+            create(operator(), "bet-10", debit(account, "20.00"))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.status", is("AUTHORIZED")));
+            assertThat(upstream.ledgerRequests().getLast().header("Authorization")).isNotEqualTo(refused);
         }
     }
 

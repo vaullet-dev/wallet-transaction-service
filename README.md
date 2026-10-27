@@ -217,7 +217,7 @@ controller, so they hold for whatever calls those methods next.
 | `POST` | `transaction:write`: a DEBIT or a CREDIT, on any account it names | `transaction:self` and the realm role `END_USER`: a DEBIT, on the account the token names |
 | `GET` | `transaction:read`: any transaction | `transaction:self` and `END_USER`: a transaction on their own account, whoever recorded it |
 
-**On the operator's side the scope is the permission**, as `ledger:write` is on the ledger: no
+**On the operator's side the scope is the permission**, as the ledger's scopes are on the ledger: no
 person is behind a client-credentials token whose role could narrow it. So `transaction:read` and
 `transaction:write` belong only on clients that are such backends, never on one people sign in with,
 where every user's token would carry them — and a member of staff, whose token names no account,
@@ -320,7 +320,7 @@ sequenceDiagram
 
     C->>T: POST /v1/transactions, a DEBIT, Idempotency-Key
     T->>D: INSERT, PENDING, attempt_until = now() + lease (one statement)
-    T->>K: client credentials, scope ledger:write (unless cached)
+    T->>K: client credentials, scope ledger:reserve (unless cached)
     T->>L: POST /v1/reservations<br/>Idempotency-Key: transaction:{transaction_id}
     Note over T,L: no database transaction open
     L-->>T: 201 the hold, or 409 / 404 / 422 refused, or no answer
@@ -337,11 +337,12 @@ first decides, and every later one reads what it wrote.
 
 **This service's own token, never the caller's.** ADR-008 has the ledger trust this service, which
 has already decided who may ask; a user's token is never a way to the ledger. The token is the client
-credentials of `wallet-transaction-service` (`KEYCLOAK_CLIENT_ID`), asking for `ledger:write`, which
-that client must offer, as an optional scope. It is reused until 30 seconds before it expires, and a
-`401` from the ledger drops it, so the next attempt fetches another. The body is `account_id`,
-`amount` and, when asked for, `expires_in_seconds`; the amount goes in the currency's minor units,
-`"20.00"` rather than the column's `20.0000`, which is what the ledger's own record should say too.
+credentials of `wallet-transaction-service` (`KEYCLOAK_CLIENT_ID`), asking for `ledger:reserve`, the
+ledger's scope for holds and for nothing else (wallet-ledger-service#23), which that client must
+offer. It is reused until 30 seconds before it expires, and a `401` or `403` from the ledger drops it,
+so the next attempt fetches another, with the scopes the client offers by then. The body is `account_id`, `amount` and, when asked for,
+`expires_in_seconds`; the amount goes in the currency's minor units, `"20.00"` rather than the
+column's `20.0000`, which is what the ledger's own record should say too.
 
 What the ledger answers, and what it becomes:
 
@@ -527,8 +528,8 @@ real token:
 - `transaction:self` as a default scope of the clients people sign in with, `bruno` and
   `swagger-ui`, beside the `identity:self` and `account-id` they already carry;
 - this service's own client, `wallet-transaction-service` (`realm/31-wallet-transaction-service.yaml`):
-  confidential, client credentials only, offering `ledger:write` as an optional scope, its secret
-  what `KEYCLOAK_CLIENT_SECRET` holds.
+  confidential, client credentials only, offering `ledger:reserve` (gitops#38, which also keeps the
+  `ledger:write` 0.1.0 asked for until gitops#39), its secret what `KEYCLOAK_CLIENT_SECRET` holds.
 
 Not yet: an operator's backend, a confidential client on client credentials holding
 `transaction:read` and `transaction:write` ([Still open](#still-open)).
@@ -574,7 +575,7 @@ thread parked behind it. The `migrate` profile lifts it, since a migration may t
 | `transaction.minor-units` | `TRANSACTION_MINOR_UNITS` | ISO 4217's: 2 for EUR, 0 for JPY | Decimal places of the minor unit, 0 to 4, since amounts are `NUMERIC(20,4)`. Set it only where the ledger's `LEDGER_MINOR_UNITS` is set, and to the same. |
 | `transaction.keycloak.url` | `KEYCLOAK_URL` | — | Keycloak's in-cluster Service, relative path included: `http://keycloak-keycloakx-http.keycloak.svc/auth`. The token endpoint is under it. |
 | `transaction.keycloak.realm` | `KEYCLOAK_REALM` | `vaullet` | |
-| `transaction.keycloak.client-id` | `KEYCLOAK_CLIENT_ID` | `wallet-transaction-service` | This service's own client: confidential, client credentials, offering `ledger:write` as an optional scope |
+| `transaction.keycloak.client-id` | `KEYCLOAK_CLIENT_ID` | `wallet-transaction-service` | This service's own client: confidential, client credentials, offering `ledger:reserve` |
 | `transaction.keycloak.client-secret` | `KEYCLOAK_CLIENT_SECRET` | — | From OpenBao through External Secrets, like the database password |
 | `transaction.keycloak.timeout` | | `5s` | Connect, and then read, on every call to Keycloak |
 | `transaction.ledger.url` | `LEDGER_URL` | — | The ledger's in-cluster Service, `http://ledger-service.wallet-ledger.svc`: the only way in, since the ledger has no public route (ADR-008) |
@@ -604,9 +605,9 @@ The `local` profile sets EUR and points at the other two where they run on a lap
 recorded without them. A DEBIT needs both:
 
 - **Keycloak at `localhost:58080`** (`KEYCLOAK_HOST_PORT`), wallet-auth-service's Compose one, with a
-  client scope `ledger:write` and a confidential client `wallet-transaction-service`: service
-  accounts on, secret `test-only-secret` (or `KEYCLOAK_CLIENT_SECRET`), `ledger:write` offered as an
-  optional scope. That realm's import has neither, so they are added by hand in its admin console.
+  client scope `ledger:reserve` and a confidential client `wallet-transaction-service`: service
+  accounts on, secret `test-only-secret` (or `KEYCLOAK_CLIENT_SECRET`), `ledger:reserve` offered as a
+  client scope. That realm's import has neither, so they are added by hand in its admin console.
 - **The ledger at `localhost:8081`** (`LEDGER_PORT`): `SERVER_PORT=8081 ./mvnw spring-boot:run` in
   wallet-ledger-service. Its `local` profile does not look at the token.
 
@@ -707,11 +708,6 @@ annotation purposes, so the root's reaches only the classes directly in it.
   own client ([Reaching it](#reaching-it)), but no operator's backend exists to hold the other two,
   so the operator's side works only under the `local` profile. ADR-008's scope table, which the
   client scopes are meant to be generated from, has no `/v1/transactions` rows yet either.
-- **Architecture's G6.** The ledger checks one scope, `ledger:write`, for every change — holds placed
-  and released, wallets opened, frozen and closed — where ADR-008 names `ledger:reserve` for this
-  service's path. So this service's token could also freeze or close any wallet. G6 accepted that
-  while wallet-auth-service's outbox relay was the only holder, and put the split before "a second
-  service is given `ledger:write`": this is the second.
 - **ADR-012's codes.** ADR-012 §7 lists `ACCOUNT_NOT_FOUND` and `TEMPORARILY_UNAVAILABLE`; the
   platform answers `RESOURCE_NOT_FOUND` and `UPSTREAM_UNAVAILABLE`, and this service passes the
   ledger's through. One of the two has to move, and renaming a published code is a breaking change

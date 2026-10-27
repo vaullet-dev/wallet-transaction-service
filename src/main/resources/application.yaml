@@ -89,7 +89,7 @@ transaction:
     # ledger comes from its token endpoint.
     url: ${KEYCLOAK_URL:}
     realm: ${KEYCLOAK_REALM:vaullet}
-    # Confidential, client credentials only, offering ledger:write as an optional scope
+    # Confidential, client credentials only, offering ledger:reserve, the ledger's scope for holds
     # (gitops realm/31-wallet-transaction-service.yaml).
     client-id: ${KEYCLOAK_CLIENT_ID:wallet-transaction-service}
     # From OpenBao via External Secrets, like the database password.
