@@ -71,13 +71,13 @@ spec:
               value: https://vaullet.dev/auth/realms/vaullet
 
             # Where this service gets its own token for the ledger (ADR-008): the
-            # client credentials of wallet-transaction-service, asking for the
-            # optional scope ledger:write. A caller's token never goes to the
-            # ledger. Keycloak's in-cluster Service, /auth relative path included,
-            # rather than vaullet.dev/auth: the call has no reason to leave the
-            # cluster, and the token's `iss` comes from KC_HOSTNAME whichever
-            # address it was fetched from. Realm and client id keep their defaults
-            # (vaullet, wallet-transaction-service).
+            # client credentials of wallet-transaction-service, asking for
+            # ledger:reserve, the ledger's scope for holds. A caller's token never
+            # goes to the ledger. Keycloak's in-cluster Service, /auth relative
+            # path included, rather than vaullet.dev/auth: the call has no reason
+            # to leave the cluster, and the token's `iss` comes from KC_HOSTNAME
+            # whichever address it was fetched from. Realm and client id keep
+            # their defaults (vaullet, wallet-transaction-service).
             - { name: KEYCLOAK_URL, value: "http://keycloak-keycloakx-http.keycloak.svc/auth" }
             - name: KEYCLOAK_CLIENT_SECRET
               valueFrom: { secretKeyRef: { name: keycloak-client, key: KEYCLOAK_CLIENT_SECRET } }

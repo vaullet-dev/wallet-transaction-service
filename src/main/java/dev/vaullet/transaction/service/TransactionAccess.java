@@ -12,7 +12,7 @@ package dev.vaullet.transaction.service;
  * <ul>
  *   <li><b>An operator's backend</b>, on client credentials, with {@code transaction:write} and
  *       {@code transaction:read}. No person is behind its token, so on this side the scope is the
- *       permission, as {@code ledger:write} is on the ledger, and the scopes go only to clients that
+ *       permission, as {@code ledger:reserve} is on the ledger, and the scopes go only to clients that
  *       are such backends — never to one people sign in with, where every user's token would carry
  *       them.
  *   <li><b>An end user</b>, for their own account: {@code transaction:self}, the {@code END_USER}

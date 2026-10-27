@@ -36,7 +36,7 @@ public record TransactionProperties(
      *     {@code http://keycloak-keycloakx-http.keycloak.svc/auth}. The token endpoint is under it.
      * @param realm the realm this service's client lives in.
      * @param clientId the confidential client this service authenticates as. It offers
-     *     {@code ledger:write} as an optional scope, which every token this service asks for names.
+     *     {@code ledger:reserve}, which every token this service asks for names.
      * @param clientSecret that client's secret, from OpenBao through External Secrets.
      * @param timeout connect and read timeout for every call to Keycloak.
      */

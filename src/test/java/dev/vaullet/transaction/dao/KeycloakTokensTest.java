@@ -67,7 +67,7 @@ class KeycloakTokensTest {
                         HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build()))
                 .baseUrl(url)
                 .build();
-        return new KeycloakTokens(rest, REALM, CLIENT, "test-only-secret", "ledger:write", lockWait);
+        return new KeycloakTokens(rest, REALM, CLIENT, "test-only-secret", "ledger:reserve", lockWait);
     }
 
     private void answering(int status, String body) {
@@ -84,7 +84,7 @@ class KeycloakTokensTest {
 
         assertThat(keycloak.requests()).singleElement().satisfies(request -> assertThat(request.body())
                 .isEqualTo("grant_type=client_credentials&client_id=wallet-transaction-service"
-                        + "&client_secret=test-only-secret&scope=ledger%3Awrite"));
+                        + "&client_secret=test-only-secret&scope=ledger%3Areserve"));
     }
 
     @Nested
@@ -128,13 +128,13 @@ class KeycloakTokensTest {
         @DisplayName("400 and 401 refuse the credentials, with Keycloak's own reason")
         void credentials() {
             answering(400, """
-                    {"error": "invalid_scope", "error_description": "Invalid scopes: ledger:write"}""");
+                    {"error": "invalid_scope", "error_description": "Invalid scopes: ledger:reserve"}""");
 
             assertThatThrownBy(() -> tokens().bearer())
                     .isInstanceOf(IllegalStateException.class)
                     .isNotInstanceOf(UpstreamUnavailableException.class)
                     .hasMessage("Keycloak refused the client credentials of '" + CLIENT + "' in realm '" + REALM
-                            + "' (HTTP 400 invalid_scope: Invalid scopes: ledger:write)");
+                            + "' (HTTP 400 invalid_scope: Invalid scopes: ledger:reserve)");
 
             answering(401, """
                     {"error": "unauthorized_client", "error_description": "Invalid client or Invalid client credentials"}""");

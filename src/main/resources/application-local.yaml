@@ -36,7 +36,7 @@ transaction:
   # ledger started with --server.port=8081. Neither is needed to start, and a CREDIT is
   # recorded without them. A DEBIT answers 503 while either is down, and 500 while
   # Keycloak is up without this client: its realm has wallet-transaction-service, with
-  # this secret and ledger:write as an optional scope, only if you add them.
+  # this secret and ledger:reserve as a client scope, only if you add them.
   keycloak:
     url: http://localhost:${KEYCLOAK_HOST_PORT:58080}
     client-secret: ${KEYCLOAK_CLIENT_SECRET:test-only-secret}

@@ -38,7 +38,7 @@ import tools.jackson.databind.json.JsonMapper;
  * {@link IllegalStateException}.
  *
  * <p><b>The contract</b> (wallet-ledger-service README, "The API"; its {@code ReservationController}):
- * a bearer token carrying {@code ledger:write}, an {@code Idempotency-Key}, and a JSON body
+ * a bearer token carrying {@code ledger:reserve}, an {@code Idempotency-Key}, and a JSON body
  * {@code {"account_id", "amount", "expires_in_seconds"?}}. {@code 201} with the hold, whether this
  * call placed it or an earlier one with the same key did: the ledger replays a key's hold as it is
  * now, which may be {@code EXPIRED} or {@code RELEASED} by then. Refusals are problem+json with a
@@ -52,16 +52,21 @@ import tools.jackson.databind.json.JsonMapper;
  * authorize transactions with no money behind them.
  *
  * <p><b>The token</b> is this service's own client's, {@code wallet-transaction-service}, asking for
- * the optional scope {@code ledger:write}. Never the caller's token: ADR-008 has the ledger trust this
- * service, which has already decided who may ask, and a user's token is never a way to the ledger. A
- * {@code 401} drops the token from the cache, so the next attempt asks Keycloak for another.
+ * {@code ledger:reserve}: the ledger's scope for holds, and nothing else. Wallets need
+ * {@code ledger:write}, which this service has no use for (architecture's G6, #6). Never the caller's
+ * token: ADR-008 has the ledger trust this service, which has already decided who may ask, and a
+ * user's token is never a way to the ledger. A {@code 401} or {@code 403} drops the token from the
+ * cache, so the next attempt asks Keycloak for another, with the scopes the client offers by then.
  */
 @Repository
 @Profile("!migrate")
 public class LedgerReservations {
 
-    /** What the ledger checks on every write (wallet-ledger-service README, "Security"). */
-    public static final String SCOPE = "ledger:write";
+    /**
+     * What the ledger checks on placing and releasing a hold (wallet-ledger-service README,
+     * "Security"). {@code ledger:write} until wallet-ledger-service#23 left that scope to the wallets.
+     */
+    public static final String SCOPE = "ledger:reserve";
 
     private static final String UPSTREAM = "ledger";
     private static final String CALL = "POST /v1/reservations";
@@ -149,7 +154,11 @@ public class LedgerReservations {
                     .body(body)
                     .exchangeForRequiredValue((request, response) -> {
                         int status = response.getStatusCode().value();
-                        if (status == 401) {
+                        // A 403 as well as a 401. A token is kept until it nearly expires, and the
+                        // client's scopes can change under a running service, as when holds moved from
+                        // ledger:write to ledger:reserve (wallet-ledger-service#23): only a new token
+                        // carries what the client offers now, so the next attempt asks for one.
+                        if (status == 401 || status == 403) {
                             tokens.invalidate(token);
                         }
                         return interpret(status, read(response), amount, clientId);
@@ -206,7 +215,7 @@ public class LedgerReservations {
         if (status == 401 || status == 403) {
             throw new IllegalStateException("The ledger refused " + CALL + " with " + answer + ". The token comes "
                     + "from client '" + clientId + "' and asks for " + SCOPE + ": the client must offer " + SCOPE
-                    + " as an optional client scope, and the ledger must trust the issuer it came from.");
+                    + ", the ledger must check it on holds, and it must trust the issuer the token came from.");
         }
         if (status == 429 || status >= 500) {
             throw new UpstreamUnavailableException(UPSTREAM,
