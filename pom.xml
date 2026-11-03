@@ -70,7 +70,7 @@
       1.1.1 at least: the first whose OpenAPI schemas name the bodies' fields in snake_case, as
       this service reads and writes them, in the OpenAPI 3.1 document springdoc writes.
     -->
-    <common.version>1.1.1</common.version>
+    <common.version>1.1.2</common.version>
     <springdoc.version>3.1.0</springdoc.version>
     <flatten-maven-plugin.version>1.7.3</flatten-maven-plugin.version>
   </properties>
